@@ -319,21 +319,78 @@ This epic covers the implementation of processing POS transactions (sales and re
 **Title:** Implement NetSuite POS Transaction Event Generation
 
 **Description:**
-Develop MapReduce scripts to replace the existing saved searches (`customsearch_dwr_annex_inv_adj` and `customsearch_dwr_annex_inv_adj_2`) to identify POS transactions from outlet locations and generate events to be sent to EventBridge. This includes implementing the filtering criteria from the saved searches, extracting kit component information, and publishing events in the required format.
+Develop MapReduce scripts to replace the existing saved searches (`customsearch_dwr_annex_inv_adj` and `customsearch_dwr_annex_inv_adj_2`) to identify POS transactions from outlet locations and generate events to be sent to EventBridge. This includes implementing the filtering criteria from the saved searches.
 
 **Acceptance Criteria:**
 1. Develop MapReduce script for sales (invoices) based on existing saved search criteria
 2. Develop MapReduce script for refunds (credit memos) based on existing saved search criteria
-3. Implement kit component extraction within the scripts
-4. Apply location filtering for outlet locations
-5. Include all required data fields in event payloads
-6. Implement scheduling for regular execution
-7. Create error handling for failed event generation
-8. Document the event generation logic and scheduling requirements
-9. Implement test hooks for validation
-10. Create monitoring for event generation process
+3. Flag `custcol_dwr_adjusted_inv_wms` for items upon pushing events to the EventBridge. 
+4. Verify the scripts identify the same transactions as the current saved searches
+4. Include all required data fields in event payloads
+5. Implement scheduling for regular execution
 
-**Story Points:** 8
+#### Field Mapping (NetSuite Search Fields → Canonical → Scale)
+
+1. For Sales (Invoices)
+
+| NetSuite Field | Canonical Field | Scale Field | Transformation |
+|----------------|-----------------|-------------|----------------|
+| Date | transactionDate | TransactionDate | Direct mapping |
+| Period | period | Period | Direct mapping |
+| Tax Period | taxPeriod | TaxPeriod | Direct mapping |
+| Type | transactionType | Type | Direct mapping |
+| Document Number | documentNumber | DocumentNumber | Direct mapping |
+| Name | customerName | Name | Direct mapping |
+| Account | account | Account | Direct mapping |
+| Memo | memo | Memo | Direct mapping |
+| Amount | amount | Amount | Direct mapping |
+| Item | itemId | Item | Direct mapping |
+| Quantity | quantity | Qty | Direct mapping |
+| Location | location | Location | Direct mapping |
+| Location : External ID | locationExternalId | LocationExternalId | Direct mapping |
+| Location : Internal ID | locationInternalId | LocationInternalId | Direct mapping |
+| Location : Location Number (Custom) | locationNumber | LocationNumber | Direct mapping |
+| Item : Average Cost | itemAverageCost | AvgCost | Direct mapping |
+| Item : Display Name | itemDisplayName | ItemDescription | Direct mapping |
+| Item : Internal ID | itemInternalId | ItemInternalId | Direct mapping |
+| Item : Name | itemName | ItemName | Direct mapping |
+| Item : Type | itemType | ItemType | Direct mapping |
+| Line ID | lineId | LineId | Direct mapping |
+| Internal ID | internalId | InternalId | Direct mapping |
+| Cost Center | costCenter | CostCenter | Direct mapping |
+| Custom Form | customForm | CustomForm | Direct mapping |
+| Type (duplicate) | transactionSubType | SubType | Direct mapping |
+| Quantity (duplicate) | quantityAlt | QuantityAlt | Direct mapping |
+
+2. For Refunds (Credit Memos)
+
+| NetSuite Field | Canonical Field | Scale Field | Transformation |
+|----------------|-----------------|-------------|----------------|
+| Date | transactionDate | TransactionDate | Direct mapping |
+| Period | period | Period | Direct mapping |
+| Tax Period | taxPeriod | TaxPeriod | Direct mapping |
+| Type | transactionType | Type | Direct mapping |
+| Document Number | documentNumber | DocumentNumber | Direct mapping |
+| Name | customerName | Name | Direct mapping |
+| Account | account | Account | Direct mapping |
+| Amount | amount | Amount | Direct mapping |
+| Item | itemId | Item | Direct mapping |
+| Quantity | quantity | Qty | For credit memos: -quantity |
+| Location | location | Location | Direct mapping |
+| Location : External ID | locationExternalId | LocationExternalId | Direct mapping |
+| Location : Internal ID | locationInternalId | LocationInternalId | Direct mapping |
+| Location : Location Number (Custom) | locationNumber | LocationNumber | Direct mapping |
+| Item : Name | itemName | ItemName | Direct mapping |
+| Item : Average Cost | itemAverageCost | AvgCost | Direct mapping |
+| Item : Display Name | itemDisplayName | ItemDescription | Direct mapping |
+| Item : Internal ID | itemInternalId | ItemInternalId | Direct mapping |
+| Item : Type | itemType | ItemType | Direct mapping |
+| Line ID | lineId | LineId | Direct mapping |
+| Internal ID | internalId | InternalId | Direct mapping |
+| Cost Center | costCenter | CostCenter | Direct mapping |
+| Custom Form | customForm | CustomForm | Direct mapping |
+
+**Story Points:**
 
 **Dependencies:** Epic 1, Ticket 2.1
 
