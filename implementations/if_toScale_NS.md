@@ -4,7 +4,7 @@ This document outlines the implementation requirements for the NetSuite MapReduc
 
 ## 1. Saved Search Usage
 
-Use existing saved `search customsearch_hmk_st_if_to_dc` for Item Fulfillments which filters for:
+Use existing saved search `customsearch_hmk_st_if_to_dc` for Item Fulfillments which filters for:
 - Transaction Type: Item Fulfillment
 - Created From: Transfer Order
 - Sent To WMS is false
