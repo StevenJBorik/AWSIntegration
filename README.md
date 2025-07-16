@@ -187,6 +187,7 @@ graph TB
 - **Lambda Function**: `blob_processor` 
 - **Schedule**: Every 5 minutes (`rate(5 minutes)`)
 - **Event**: `{ "integrationType": "inventory-adjustments" }`
+- **File**: `src/handlers/queue/blob-processor-handler.ts`
 
 #### B. File Processor Flow
 ```typescript
@@ -199,6 +200,13 @@ FileProcessor.processFiles() →
   InventoryTransformer.transformInventoryAdjustments() → 
   EventBridgePublisher.publishEvents()
 ```
+
+**Component Files:**
+- **FileProcessor**: `src/file-processing/processors/file-processor.ts`
+- **InventoryProcessor**: `src/file-processing/processors/inventory-processor.ts`
+- **InventoryXmlParser**: `src/file-processing/parsers/inventory-xml-parser.ts`
+- **InventoryTransformer**: `src/file-processing/transformers/inventory-transformer.ts`
+- **EventBridgePublisher**: `src/app_svcs/events/eventbridge-publisher.ts`
 
 
 
@@ -213,6 +221,8 @@ The system applies specific business rules to determine which transactions to pr
 **Inventory Transfers (TransactionType = 360)**:
 - ✅ **Include**: Only transactions with `Direction = "From"`
 - ❌ **Exclude**: `ReferenceType` = "Netsuite POS allocation"
+
+**File**: `src/file-processing/transformers/inventory-transformer.ts` (filtering logic)
 
 ### 3. Data Transformation
 
@@ -380,6 +390,8 @@ const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const shareClient = new ShareServiceClient(connectionString);
 ```
 
+**File**: `src/app_svcs/blob/azure-files-client.ts`
+
 #### B. AWS Infrastructure
 - **S3 Buckets**: 
   - `midtier-configurations-{stage}` - Configuration files
@@ -388,6 +400,11 @@ const shareClient = new ShareServiceClient(connectionString);
   - `/midtier-scale-adapter/{stage}/azure/blobConnectionString`
   - `/midtier-scale-adapter/{stage}/eventbridge/busName`
 - **EventBridge Rules**: Configured via Terraform
+
+**Files**: 
+- `infrastructure/terraform/eventbridge.tf`
+- `serverless.yml` (S3 bucket references)
+- `src/utils/config.ts` (SSM parameter handling)
 
 #### C. IAM Permissions
 ```json
@@ -454,6 +471,11 @@ try {
 | `DateTimeStamp` | `adjustmentDate` | `trandate` | Transaction date |
 | `UserDef1-4` | `extensions.Scale.userDef1-4` | `custbody_hmk_ic_comment1-4` | Custom fields |
 
+**Reference Files**:
+- Scale Field Mappings: `docs/Manhattan Scale Integrations Mapping Document - Inventory Transactions (1)(Inventory_Adjustment).csv`
+- Canonical Model: `midtier-integration-core/src/models/domains/inventory/adjustment-events.ts`
+- NetSuite Types: `midtier-netsuite-adapter/src/domains/inventory-adjustment/types/inventory-adjustment-types.ts`
+
 ### Inventory Transfers
 
 | Scale Field | Canonical Field | NetSuite Field | Notes |
@@ -465,6 +487,11 @@ try {
 | `ToWarehouse` | `extensions.Scale.toWarehouse` | `transferlocation` | To location |
 | `Direction` | N/A | N/A | Must be "From" |
 | `UserName` | `initiatedBy.userName` | `user_name` | User who initiated |
+
+**Reference Files**:
+- Scale Field Mappings: `docs/Manhattan Scale Integrations Mapping Document - Inventory Transactions (1)(Inventory_Transfer).csv`
+- Canonical Model: `midtier-integration-core/src/models/domains/inventory/adjustment-events.ts`
+- NetSuite Types: `midtier-netsuite-adapter/src/domains/inventory-adjustment/types/inventory-adjustment-types.ts`
 
 ## Data Flow Summary
 
@@ -514,6 +541,8 @@ fileTypes: {
   }
 }
 ```
+
+**File**: `src/file-processing/config/processor-config.ts`
 
 
 ### Diagram
@@ -616,6 +645,8 @@ graph TB
 
 The NetSuite adapter receives canonical events from EventBridge and processes them through a Step Functions workflow:
 
+**File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/entry-handler.ts`
+
 ```typescript
 // Entry handler receives events from EventBridge
 export async function entryHandler(
@@ -658,26 +689,34 @@ The NetSuite adapter uses a multi-step workflow to process inventory adjustments
 - Validates canonical event structure
 - Ensures required fields are present
 - Checks business rules compliance
+- **File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/validate-handler.ts`
 
 **Step 2: TransformAdjustment**
 - Transforms canonical format to NetSuite-ready format
 - Maps Scale field names to NetSuite field names
 - Prepares adjustment header and line items
+- **File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/transform-handler.ts`
 
 **Step 3: LookupItemCosts**
 - Queries NetSuite for item cost information using SuiteQL
 - Supports both legacy (3-query) and simplified (single-query) approaches
 - Handles cost lookups with task tokens for async processing
+- **Files**: 
+  - `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/cost-lookup-handler.ts` (legacy)
+  - `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/cost-lookup-handler-single.ts` (simplified)
+  - `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/cost-lookup-handler-simple.ts` (queue-based)
 
 **Step 4: DetermineQueuePriority**
 - Applies account/department overrides
 - Determines appropriate priority queue (High/Normal/Batch)
 - Builds final NetSuite payload with all enrichments
+- **File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/queue-determination-handler.ts`
 
 **Step 5: SubmitToNetSuite**
 - Queues the final payload to appropriate SQS queue
 - Uses task tokens to wait for completion
 - Handles success/failure responses
+- **File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/submit-handler.ts`
 
 ### C. Priority Queue System
 
@@ -701,9 +740,13 @@ The NetSuite adapter uses a three-tier priority queue system:
 - Max receive count: 3 (then moves to DLQ)
 - Used for: Large batch adjustments, transfers
 
+**Configuration File**: `midtier-netsuite-adapter/serverless.yml` (CloudFormation resources section)
+
 ### D. NetSuite Queue Processor
 
 The queue processor handles all NetSuite API calls with concurrency management:
+
+**File**: `midtier-netsuite-adapter/src/shared/handlers/netsuite-queue-processor.ts`
 
 ```typescript
 export const handler = async (event: SQSEvent, context: Context): Promise<void> => {
@@ -749,6 +792,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<void> 
 - Uses certificate-based OAuth with NetSuite
 - Generates JWT tokens for API authentication
 - Stores tokens in SSM Parameter Store
+- **File**: `midtier-netsuite-adapter/src/shared/handlers/token-refresh-handler.ts`
 
 ```typescript
 export const handler = async (event: any, context: any): Promise<any> => {
@@ -767,10 +811,13 @@ export const handler = async (event: any, context: any): Promise<any> => {
 - Manages token lifecycle and refresh
 - Handles authentication for all NetSuite API calls
 - Implements retry logic for expired tokens
+- **File**: `midtier-netsuite-adapter/src/app_svcs/netsuite-auth.ts`
 
 ### F. NetSuite Client
 
 The NetSuite client provides a unified interface for all NetSuite operations:
+
+**File**: `midtier-netsuite-adapter/src/shared/clients/netsuite-client.ts`
 
 ```typescript
 export class NetsuiteClient {
@@ -803,6 +850,7 @@ The cost lookup system queries NetSuite for item costs using SuiteQL:
 1. Query item master data
 2. Query location-specific costs
 3. Query department-specific costs
+- **File**: `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/cost-lookup-handler.ts`
 
 **Simplified Approach (Single Query)**
 ```sql
@@ -821,6 +869,10 @@ WHERE i.externalid IN ('ITEM123', 'ITEM456')
   AND ic.locationid = 88
 ```
 
+**Files**: 
+- `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/cost-lookup-handler-single.ts`
+- `midtier-netsuite-adapter/src/domains/inventory-adjustment/handlers/process-cost-data-handler.ts`
+
 ### H. Error Handling & Dead Letter Queues
 
 **Dead Letter Queue Processing**
@@ -834,6 +886,10 @@ WHERE i.externalid IN ('ITEM123', 'ITEM456')
 - **Authentication Errors**: Token expiration or invalid credentials
 - **Rate Limit Errors**: NetSuite API rate limiting
 - **Business Rule Errors**: NetSuite business logic violations
+
+**Files**: 
+- `midtier-netsuite-adapter/src/shared/handlers/dlq-processor.ts`
+- `midtier-netsuite-adapter/src/shared/utils/error-handler.ts`
 
 ### I. Infrastructure Components
 
@@ -878,6 +934,12 @@ NetSuiteApiHighPriorityQueue:
 /midtier-netsuite-adapter/${stage}/netsuite/private_key
 /midtier-netsuite-adapter/${stage}/netsuite/access_token
 ```
+
+**Infrastructure Files**:
+- `midtier-netsuite-adapter/serverless.yml` (Step Functions, SQS, IAM roles)
+- `midtier-netsuite-adapter/infrastructure/terraform/` (Terraform modules)
+- `midtier-netsuite-adapter/src/shared/services/stepfunctions-service.ts` (Step Functions interaction)
+- `midtier-netsuite-adapter/src/shared/services/configuration-service.ts` (SSM parameter management)
 
 ## 8. Complete Data Flow
 
